@@ -34,6 +34,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -105,6 +106,10 @@ public final class InlineConfigParser {
     private static final Pattern MULTIPLE_VIOLATIONS_BELOW_PATTERN = Pattern
             .compile(".*//\\s*(\\d+) violations below$");
 
+    /** A pattern to find the string: "X violations below". */
+    private static final Pattern MULTIPLE_VIOLATIONS_BLOCK_BELOW_PATTERN = Pattern
+            .compile(".*\\s*(\\d+) violations below$");
+
     /** A pattern to find the string: "// filtered violation". */
     private static final Pattern FILTERED_VIOLATION_PATTERN = Pattern
             .compile(".*//\\s*filtered violation\\s*(?:['\"](.*)['\"])?$");
@@ -124,6 +129,10 @@ public final class InlineConfigParser {
     /** A pattern to find the string: "// violation X lines below". */
     private static final Pattern VIOLATION_SOME_LINES_BELOW_PATTERN = Pattern
             .compile(".*//\\s*violation (\\d+) lines below\\s*(?:['\"](.*)['\"])?$");
+
+    /** A pattern to find the string: "'explanation'". */
+    private static final Pattern MULTIPLE_VIOLATIONS_EXPLANATION_PATTERN = Pattern
+            .compile(".*['\"](.*)['\"]");
 
     /** The String "(null)". */
     private static final String NULL_STRING = "(null)";
@@ -475,6 +484,8 @@ public final class InlineConfigParser {
                 VIOLATION_SOME_LINES_ABOVE_PATTERN.matcher(lines.get(lineNo));
         final Matcher violationSomeLinesBelowMatcher =
                 VIOLATION_SOME_LINES_BELOW_PATTERN.matcher(lines.get(lineNo));
+        final Matcher multipleViolationsBlockBelowMatcher =
+                MULTIPLE_VIOLATIONS_BLOCK_BELOW_PATTERN.matcher(lines.get(lineNo));
         if (violationMatcher.matches()) {
             final String violationMessage = violationMatcher.group(1);
             final int violationLineNum = lineNo + 1;
@@ -554,6 +565,21 @@ public final class InlineConfigParser {
         else if (useFilteredViolations) {
             setFilteredViolation(inputConfigBuilder, lineNo + 1,
                     lines.get(lineNo), specifyViolationMessage);
+        }
+        else if (multipleViolationsBlockBelowMatcher.matches()) {
+            final int numberOfViolations = Integer.parseInt(multipleViolationsBlockBelowMatcher.group(1));
+            AtomicInteger idx = new AtomicInteger(1);
+            Collections
+                    .nCopies(numberOfViolations,
+                            lineNo + numberOfViolations + 1)
+                    .forEach(actualLineNumber -> {
+                        final Matcher multipleViolationsExplanationPattern =
+                                MULTIPLE_VIOLATIONS_EXPLANATION_PATTERN.matcher(lines.get(lineNo + idx.get()));
+                        final String violationMessageBelow =
+                                multipleViolationsExplanationPattern.group(0);
+                        inputConfigBuilder.addViolation(actualLineNumber,violationMessageBelow );
+                        idx.getAndIncrement();
+                    });
         }
     }
 
